@@ -1,0 +1,140 @@
+# inventory_simulation.py
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(42)  # for fair comparison
+
+# -----------------------------
+# STEP 1: LOAD DATASET
+# -----------------------------
+df = pd.read_csv("retail_sales.csv")
+
+# Demand stats
+mean_demand = df["Demand"].mean()
+std_demand = df["Demand"].std()
+
+lead_time_min = 2
+lead_time_max = 5
+
+holding_cost = df["Holding_Cost"].iloc[0]
+ordering_cost = df["Ordering_Cost"].iloc[0]
+initial_stock = df["Initial_Stock"].iloc[0]
+
+# Simulation settings
+days = 60
+service_level_z = 1.65  # ~95%
+
+# -----------------------------
+# STEP 2: CALCULATE PARAMETERS
+# -----------------------------
+avg_lead_time = (lead_time_min + lead_time_max) / 2
+
+safety_stock = service_level_z * std_demand * np.sqrt(avg_lead_time)
+ROP = mean_demand * avg_lead_time + safety_stock
+
+EOQ = np.sqrt((2 * mean_demand * 365 * ordering_cost) / holding_cost)
+
+print("=== MODEL PARAMETERS ===")
+print(f"Mean Demand: {mean_demand:.2f}")
+print(f"Std Dev Demand: {std_demand:.2f}")
+print(f"ROP: {ROP:.2f}")
+print(f"Safety Stock: {safety_stock:.2f}")
+print(f"EOQ: {EOQ:.2f}")
+
+# -----------------------------
+# FUNCTION: SIMULATION
+# -----------------------------
+def simulate(model=True):
+    inventory = initial_stock
+    stockouts = 0
+    total_holding_cost = 0
+    total_ordering_cost = 0
+
+    inventory_history = []
+    orders = []  # (arrival_day, quantity)
+
+    for day in range(days):
+        # Generate stochastic demand
+        demand = max(0, int(np.random.normal(mean_demand, std_demand)))
+
+        # Receive orders
+        for order in orders:
+            if order[0] == day:
+                inventory += order[1]
+        orders = [o for o in orders if o[0] > day]
+
+        # Check stockout
+        if inventory < demand:
+            stockouts += 1
+            inventory = 0
+        else:
+            inventory -= demand
+
+        # Holding cost
+        total_holding_cost += inventory * holding_cost
+
+        # -----------------------------
+        # REORDER LOGIC
+        # -----------------------------
+        if model:
+            # Optimized model
+            if inventory <= ROP:
+                lead_time = np.random.randint(lead_time_min, lead_time_max + 1)
+                arrival_day = day + lead_time
+                orders.append((arrival_day, int(EOQ)))
+                total_ordering_cost += ordering_cost
+        else:
+            # Baseline (bad logic)
+            if inventory == 0:
+                lead_time = np.random.randint(lead_time_min, lead_time_max + 1)
+                arrival_day = day + lead_time
+                orders.append((arrival_day, int(EOQ)))
+                total_ordering_cost += ordering_cost
+
+        inventory_history.append(inventory)
+
+    total_cost = total_holding_cost + total_ordering_cost
+    stockout_pct = (stockouts / days) * 100
+
+    return inventory_history, stockout_pct, total_cost
+
+# -----------------------------
+# STEP 3: RUN BOTH SIMULATIONS
+# -----------------------------
+baseline_inventory, baseline_stockout, baseline_cost = simulate(model=False)
+optimized_inventory, optimized_stockout, optimized_cost = simulate(model=True)
+
+# -----------------------------
+# STEP 4: RESULTS
+# -----------------------------
+print("\n=== RESULTS ===")
+
+print("\n--- Baseline ---")
+print(f"Stockout %: {baseline_stockout:.2f}")
+print(f"Total Cost: ₹{baseline_cost:.2f}")
+
+print("\n--- Optimized Model ---")
+print(f"Stockout %: {optimized_stockout:.2f}")
+print(f"Total Cost: ₹{optimized_cost:.2f}")
+
+# Improvement calculations
+stockout_reduction = ((baseline_stockout - optimized_stockout) / baseline_stockout) * 100
+cost_reduction = ((baseline_cost - optimized_cost) / baseline_cost) * 100
+
+print("\n=== IMPROVEMENT ===")
+print(f"Stockout Reduction: {stockout_reduction:.2f}%")
+print(f"Cost Reduction: {cost_reduction:.2f}%")
+
+# -----------------------------
+# STEP 5: PLOT GRAPH
+# -----------------------------
+plt.figure()
+plt.plot(baseline_inventory, label="Baseline")
+plt.plot(optimized_inventory, label="Optimized")
+plt.xlabel("Days")
+plt.ylabel("Inventory Level")
+plt.title("Inventory Comparison (60 Days)")
+plt.legend()
+plt.show()
