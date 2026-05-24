@@ -1,0 +1,2 @@
+# Inventory_Optimization_Project
+In modern supply chain systems, maintaining an optimal balance between inventory availability and cost is a major challenge. Excess inventory leads to higher holding costs, while insufficient inventory results in stockouts and lost sales. This project aims to design an inventory management system that minimizes stockouts and total cost by optimizing reorder decisions under uncertain demand and lead time conditions.
